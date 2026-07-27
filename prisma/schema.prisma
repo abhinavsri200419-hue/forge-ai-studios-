@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  Pending
+  Confirmed
+  Completed
+  Cancelled
+}
+
+enum AdminRole {
+  ADMIN
+  SUPERADMIN
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  name           String
+  company        String?
+  email          String
+  phone          String?
+  service        String?
+  preferredDate  DateTime
+  preferredTime  String
+  message        String?
+  googleEventId  String?
+  meetLink       String?
+  status         BookingStatus @default(Pending)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([preferredDate])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  company   String?
+  email     String
+  phone     String?
+  service   String?
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model AdminUser {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  password  String
+  role      AdminRole @default(ADMIN)
+  createdAt DateTime  @default(now())
+}
+
+// Lightweight duplicate-submission / rate-limit tracking, persisted so it
+// survives serverless cold starts (unlike an in-memory map).
+model SubmissionLog {
+  id        String   @id @default(cuid())
+  ip        String
+  emailHash String
+  kind      String // "contact" | "booking"
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([emailHash, kind, createdAt])
+}
