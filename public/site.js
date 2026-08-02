@@ -18,12 +18,97 @@ mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => 
   hamburger.classList.remove('open'); mobileMenu.classList.remove('open');
 }));
 
-/* ---------- scroll reveal ---------- */
-const revealEls = document.querySelectorAll('.reveal, .reveal-scale');
-const io = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
-}, {threshold:0.15});
-revealEls.forEach(el => io.observe(el));
+/* ---------- scroll reveal (GSAP + ScrollTrigger) ---------- */
+// Fail-safe: if GSAP/ScrollTrigger didn't load (CDN blocked) or anything below
+// throws, reveal ALL content immediately so no section is ever left hidden,
+// and never let a missing library break the rest of the page's scripts.
+function revealAllFallback() {
+  document.querySelectorAll('.reveal, .reveal-scale').forEach(el => el.classList.add('in'));
+}
+
+if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+  revealAllFallback();
+} else {
+  try {
+    gsap.registerPlugin(ScrollTrigger);
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefersReduced) {
+      revealAllFallback();
+    } else {
+      // Service groups: sticky label fades/slides in, its cards pop up with stagger.
+      gsap.utils.toArray('.svc-group').forEach(group => {
+        const label = group.querySelector('.svc-group-label');
+        const cards = group.querySelectorAll('.svc-card');
+        // Neutralize the card hover transition only while GSAP animates it (restored on complete).
+        if (cards.length) cards.forEach(c => { c.style.transition = 'none'; });
+        if (label) {
+          gsap.from(label, {
+            scrollTrigger: { trigger: group, start: 'top 82%' },
+            autoAlpha: 0, x: -30, duration: 0.8, ease: 'power3.out',
+            clearProps: 'transform,opacity,visibility'
+          });
+        }
+        if (cards.length) {
+          gsap.from(cards, {
+            scrollTrigger: { trigger: group, start: 'top 80%' },
+            autoAlpha: 0, scale: 0.9, y: 50, duration: 0.65, ease: 'back.out(1.5)', stagger: 0.09,
+            clearProps: 'transform,opacity,visibility',
+            onComplete: () => cards.forEach(c => { c.style.transition = ''; })
+          });
+        }
+      });
+
+      // All remaining .reveal / .reveal-scale blocks: fade + rise (skip service cards handled above).
+      gsap.utils.toArray('.reveal, .reveal-scale').forEach(el => {
+        if (el.closest('.svc-group-cards')) return;
+        // Org-chart nodes are driven by their own timeline below (fixes the pillar-2/3 flash bug).
+        if (el.closest('.org-chart')) return;
+        // Section-heads are animated by the dedicated word-split scroll reveal below.
+        if (el.classList.contains('section-head')) return;
+        gsap.from(el, {
+          scrollTrigger: { trigger: el, start: 'top 88%' },
+          autoAlpha: 0, y: 30, duration: 0.9, ease: 'power3.out'
+        });
+      });
+
+      // Org-chart: reveal center + pillars and run the full pulse sequence on one timeline so
+      // every pillar's v-pulse and ring-flash plays regardless of scroll position when the chart enters view.
+      const orgChart = document.querySelector('.org-chart');
+      if(orgChart){
+        const orgCenter = orgChart.querySelector('.org-center');
+        const pillars   = orgChart.querySelectorAll('.pillar');
+        const rings     = orgChart.querySelectorAll('.pillar .icon-ring');
+        const badge     = orgChart.querySelector('.node-badge');
+        const trunk     = orgChart.querySelector('.trunk-pulse');
+        const hL        = orgChart.querySelector('.h-pulse-left');
+        const hR        = orgChart.querySelector('.h-pulse-right');
+        const vP        = orgChart.querySelectorAll('.v-pulse');
+        const tl = gsap.timeline({
+          scrollTrigger: { trigger: orgChart, start: 'top 70%', once: true },
+          defaults: { ease: 'power2.out' }
+        });
+        tl.fromTo(orgCenter, { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: 0.6, clearProps: 'transform,opacity,visibility' }, 0)
+          .fromTo(pillars, { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: 0.6, stagger: 0, clearProps: 'transform,opacity,visibility' }, 0)
+          .fromTo(badge, { boxShadow: '0 0 30px rgba(108,182,247,0.5)' }, { boxShadow: '0 0 55px rgba(159,208,255,0.95)', duration: 0.3, yoyo: true, repeat: 1 }, 0.7)
+          .fromTo(trunk, { top: '0%', autoAlpha: 0 }, { top: '100%', autoAlpha: 1, duration: 0.5 }, 1.0)
+          .to(trunk, { autoAlpha: 0, duration: 0.2 }, '-=0.1')
+          .fromTo(hL, { left: '50%', autoAlpha: 0 }, { left: '0%', autoAlpha: 1, duration: 0.45 }, 1.6)
+          .fromTo(hR, { left: '50%', autoAlpha: 0 }, { left: '100%', autoAlpha: 1, duration: 0.45 }, 1.6)
+          .to([hL, hR], { autoAlpha: 0, duration: 0.2 }, '-=0.1')
+          .fromTo(vP, { top: '0%', autoAlpha: 0 }, { top: '100%', autoAlpha: 1, duration: 0.35, stagger: 0.14 }, 2.1)
+          .to(vP, { autoAlpha: 0, duration: 0.2 }, '-=0.1')
+          .fromTo(rings, { boxShadow: '0 0 0 rgba(108,182,247,0)', borderColor: 'rgba(122,186,255,0.34)' },
+                  { boxShadow: '0 0 34px rgba(108,182,247,0.85)', borderColor: 'rgba(108,182,247,1)', duration: 0.28, stagger: 0.16, yoyo: true, repeat: 1 }, 2.6);
+      }
+
+      // Recalculate trigger positions once assets/fonts have loaded.
+      window.addEventListener('load', () => ScrollTrigger.refresh());
+    }
+  } catch (err) {
+    revealAllFallback();
+  }
+}
 
 /* ---------- org-chart connector line ---------- */
 function placeOrgLine(){
@@ -44,21 +129,6 @@ placeOrgLine();
 window.addEventListener('resize', placeOrgLine);
 window.addEventListener('load', placeOrgLine);
 if(document.fonts && document.fonts.ready){ document.fonts.ready.then(placeOrgLine); }
-
-/* ---------- org-chart glow pulse (replays every time it scrolls into view) ---------- */
-const orgChartEl = document.querySelector('.org-chart');
-if(orgChartEl){
-  const orgPulseIo = new IntersectionObserver((entries)=>{
-    entries.forEach(e=>{
-      if(e.isIntersecting){
-        orgChartEl.classList.remove('pulse');
-        void orgChartEl.offsetWidth;
-        orgChartEl.classList.add('pulse');
-      }
-    });
-  }, {threshold:0.4});
-  orgPulseIo.observe(orgChartEl);
-}
 
 /* ---------- portfolio showcase strip ---------- */
 const portfolioHighlights = [
@@ -111,8 +181,6 @@ const projects = [
 
 const stage = document.getElementById('carStage');
 const dotsWrap = document.getElementById('carDots');
-let carIndex = 0;
-
 function svgLinkIcon(){return `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M7 17L17 7M7 7h10v10"/></svg>`;}
 
 let cardEls = [];
@@ -140,29 +208,115 @@ function buildCarousel(){
   });
 
   dotsWrap.innerHTML = projects.map((_,i)=>`<button data-i="${i}" aria-label="Go to project ${i+1}"></button>`).join('');
-  dotsWrap.querySelectorAll('button').forEach(b => b.addEventListener('click', ()=>{ carIndex = parseInt(b.dataset.i); updateCarousel(); restartAuto(); }));
-
-  updateCarousel();
+  dotsWrap.querySelectorAll('button').forEach(b => b.addEventListener('click', () => goTo(+b.dataset.i)));
+  syncDots();
 }
 
-function updateCarousel(){
-  cardEls.forEach((card, i) => {
-    const diff = (i - carIndex + projects.length) % projects.length;
-    card.classList.remove('pos-center','pos-left','pos-right','pos-hidden','pop');
-    if(diff === 0){ card.classList.add('pos-center'); void card.offsetWidth; card.classList.add('pop'); }
-    else if(diff === 1) card.classList.add('pos-right');
-    else if(diff === projects.length - 1) card.classList.add('pos-left');
-    else card.classList.add('pos-hidden');
+/* ---------- interactive scroll-snap carousel (user-driven, no auto-timer) ---------- */
+function activeIndex(){
+  const mid = stage.scrollLeft + stage.clientWidth / 2;
+  let best = 0, bd = Infinity;
+  cardEls.forEach((c,i) => {
+    const d = Math.abs((c.offsetLeft + c.offsetWidth / 2) - mid);
+    if(d < bd){ bd = d; best = i; }
   });
-  dotsWrap.querySelectorAll('button').forEach((b,i) => b.classList.toggle('active', i===carIndex));
+  return best;
 }
+function syncDots(){
+  const i = activeIndex();
+  dotsWrap.querySelectorAll('button').forEach((b,k) => b.classList.toggle('active', k === i));
+  cardEls.forEach((c,k) => {
+    c.classList.toggle('is-active', k === i);
+    c.classList.toggle('is-adj', k !== i);
+  });
+}
+let syncRaf = 0;
+stage.addEventListener('scroll', () => {
+  if(syncRaf) return;
+  syncRaf = requestAnimationFrame(() => { syncRaf = 0; syncDots(); });
+}, {passive:true});
 
-document.getElementById('carPrev').addEventListener('click', ()=>{ carIndex = (carIndex - 1 + projects.length) % projects.length; updateCarousel(); restartAuto(); });
-document.getElementById('carNext').addEventListener('click', ()=>{ carIndex = (carIndex + 1) % projects.length; updateCarousel(); restartAuto(); });
+function goTo(i){
+  const idx = Math.max(0, Math.min(cardEls.length - 1, i));
+  cardEls[idx].scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+}
+document.getElementById('carPrev').addEventListener('click', () => goTo(activeIndex() - 1));
+document.getElementById('carNext').addEventListener('click', () => goTo(activeIndex() + 1));
+
+/* drag-to-scroll (pointer-based; complements native scroll-snap + trackpad) */
+let drag = null;
+stage.addEventListener('pointerdown', (e) => {
+  drag = { x: e.clientX, sl: stage.scrollLeft };
+  stage.classList.add('dragging');
+  stage.setPointerCapture(e.pointerId);
+});
+stage.addEventListener('pointermove', (e) => {
+  if(!drag) return;
+  stage.scrollLeft = drag.sl - (e.clientX - drag.x);
+});
+const endDrag = () => { drag = null; stage.classList.remove('dragging'); };
+stage.addEventListener('pointerup', endDrag);
+stage.addEventListener('pointercancel', endDrag);
+
 buildCarousel();
+window.addEventListener('load', syncDots);
 
-let autoTimer = setInterval(()=>{ carIndex = (carIndex + 1) % projects.length; updateCarousel(); }, 5500);
-function restartAuto(){ clearInterval(autoTimer); autoTimer = setInterval(()=>{ carIndex = (carIndex + 1) % projects.length; updateCarousel(); }, 5500); }
+/* ---------- BorderGlow on service cards (React Bits port) ---------- */
+document.querySelectorAll('.svc-card').forEach(card => {
+  if(!card.querySelector('.edge-light')){
+    const el = document.createElement('span');
+    el.className = 'edge-light';
+    el.setAttribute('aria-hidden','true');
+    card.appendChild(el);
+  }
+  const getEdgeProximity = (x,y) => {
+    const r = card.getBoundingClientRect();
+    const cx = r.width/2, cy = r.height/2;
+    const dx = x - cx, dy = y - cy;
+    let kx = Infinity, ky = Infinity;
+    if(dx !== 0) kx = cx / Math.abs(dx);
+    if(dy !== 0) ky = cy / Math.abs(dy);
+    return Math.min(Math.max(1 / Math.min(kx, ky), 0), 1);
+  };
+  const getCursorAngle = (x,y) => {
+    const r = card.getBoundingClientRect();
+    const dx = x - r.width/2, dy = y - r.height/2;
+    if(dx === 0 && dy === 0) return 0;
+    let deg = Math.atan2(dy, dx) * (180/Math.PI) + 90;
+    if(deg < 0) deg += 360;
+    return deg;
+  };
+  card.addEventListener('pointermove', (e) => {
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--edge-proximity', (getEdgeProximity(e.clientX - r.left, e.clientY - r.top) * 100).toFixed(3));
+    card.style.setProperty('--cursor-angle', getCursorAngle(e.clientX - r.left, e.clientY - r.top).toFixed(3) + 'deg');
+  });
+  card.addEventListener('pointerleave', () => {
+    card.style.setProperty('--edge-proximity', '0');
+  });
+});
+
+/* ---------- tech marquee (logo loop) ---------- */
+const techLogos = [
+  {name:"Claude", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>'},
+  {name:"Claude Code", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 10.5h3v3h-3v3h-1.5v3H18v-3h-1.5v3H15v-3H9v3H7.5v-3H6v3H4.5v-3H3v-3H0v-3h3v-6h18Zm-15 0h1.5v-3H6Zm10.5 0H18v-3h-1.5z"/></svg>'},
+  {name:"Figma", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.852 8.981h-4.588V0h4.588c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.491-4.49 4.491zM12.735 7.51h3.117c1.665 0 3.019-1.355 3.019-3.019s-1.355-3.019-3.019-3.019h-3.117V7.51zm0 1.471H8.148c-2.476 0-4.49-2.014-4.49-4.49S5.672 0 8.148 0h4.588v8.981zm-4.587-7.51c-1.665 0-3.019 1.355-3.019 3.019s1.354 3.02 3.019 3.02h3.117V1.471H8.148zm4.587 15.019H8.148c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h4.588v8.98zM8.148 8.981c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h3.117V8.981H8.148zM8.172 24c-2.489 0-4.515-2.014-4.515-4.49s2.014-4.49 4.49-4.49h4.588v4.441c0 2.503-2.047 4.539-4.563 4.539zm-.024-7.51a3.023 3.023 0 0 0-3.019 3.019c0 1.665 1.365 3.019 3.044 3.019 1.705 0 3.093-1.376 3.093-3.068v-2.97H8.148zm7.704 0h-.098c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h.098c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.49-4.49 4.49zm-.097-7.509c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h.098c1.665 0 3.019-1.355 3.019-3.019s-1.355-3.019-3.019-3.019h-.098z"/></svg>'},
+  {name:"Framer Motion", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 0h16v8h-8zM4 8h8l8 8H4zM4 16h8v8z"/></svg>'},
+  {name:"Vercel", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 1.608 12 20.784H0Z"/></svg>'},
+  {name:"Shopify", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.337 23.979l7.216-1.561s-2.604-17.613-2.625-17.73c-.018-.116-.114-.192-.211-.192s-1.929-.136-1.929-.136-1.275-1.274-1.439-1.411c-.045-.037-.075-.057-.121-.074l-.914 21.104h.023zM11.71 11.305s-.81-.424-1.774-.424c-1.447 0-1.504.906-1.504 1.141 0 1.232 3.24 1.715 3.24 4.629 0 2.295-1.44 3.76-3.406 3.76-2.354 0-3.54-1.465-3.54-1.465l.646-2.086s1.245 1.066 2.28 1.066c.675 0 .975-.545.975-.932 0-1.619-2.654-1.694-2.654-4.359-.034-2.237 1.571-4.416 4.827-4.416 1.257 0 1.875.361 1.875.361l-.945 2.715-.02.01zM11.17.83c.136 0 .271.038.405.135-.984.465-2.064 1.639-2.508 3.992-.656.213-1.293.405-1.889.578C7.697 3.75 8.951.84 11.17.84V.83zm1.235 2.949v.135c-.754.232-1.583.484-2.394.736.466-1.777 1.333-2.645 2.085-2.971.193.501.309 1.176.309 2.1zm.539-2.234c.694.074 1.141.867 1.429 1.755-.349.114-.735.231-1.158.366v-.252c0-.752-.096-1.371-.271-1.871v.002zm2.992 1.289c-.02 0-.06.021-.078.021s-.289.075-.714.21c-.423-1.233-1.176-2.37-2.508-2.37h-.115C12.135.209 11.669 0 11.265 0 8.159 0 6.675 3.877 6.21 5.846c-1.194.365-2.063.636-2.16.674-.675.213-.694.232-.772.87-.075.462-1.83 14.063-1.83 14.063L15.009 24l.927-21.166z"/></svg>'},
+  {name:"Meta Ads", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg>'},
+  {name:"HTML5", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M1.5 0h21l-1.91 21.563L11.977 24l-8.564-2.438L1.5 0zm7.031 9.75l-.232-2.718 10.059.003.23-2.622L5.412 4.41l.698 8.01h9.126l-.326 3.426-2.91.804-2.955-.81-.188-2.11H6.248l.33 4.171L12 19.351l5.379-1.443.744-8.157H8.531z"/></svg>'},
+  {name:"CSS3", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M0 0v20.16A3.84 3.84 0 0 0 3.84 24h16.32A3.84 3.84 0 0 0 24 20.16V3.84A3.84 3.84 0 0 0 20.16 0Zm14.256 13.08c1.56 0 2.28 1.08 2.304 2.64h-1.608c.024-.288-.048-.6-.144-.84-.096-.192-.288-.264-.552-.264-.456 0-.696.264-.696.84-.024.576.288.888.768 1.08.72.288 1.608.744 1.92 1.296q.432.648.432 1.656c0 1.608-.912 2.592-2.496 2.592-1.656 0-2.4-1.032-2.424-2.688h1.68c0 .792.264 1.176.792 1.176.264 0 .456-.072.552-.24.192-.312.24-1.176-.048-1.512-.312-.408-.912-.6-1.32-.816q-.828-.396-1.224-.936c-.24-.36-.36-.888-.36-1.536 0-1.44.936-2.472 2.424-2.448m5.4 0c1.584 0 2.304 1.08 2.328 2.64h-1.608c0-.288-.048-.6-.168-.84-.096-.192-.264-.264-.528-.264-.48 0-.72.264-.72.84s.288.888.792 1.08c.696.288 1.608.744 1.92 1.296.264.432.408.984.408 1.656.024 1.608-.888 2.592-2.472 2.592-1.68 0-2.424-1.056-2.448-2.688h1.68c0 .744.264 1.176.792 1.176.264 0 .456-.072.552-.24.216-.312.264-1.176-.048-1.512-.288-.408-.888-.6-1.32-.816-.552-.264-.96-.576-1.2-.936s-.36-.888-.36-1.536c-.024-1.44.912-2.472 2.4-2.448m-11.031.018c.711-.006 1.419.198 1.839.63.432.432.672 1.128.648 1.992H9.336c.024-.456-.096-.792-.432-.96-.312-.144-.768-.048-.888.24-.12.264-.192.576-.168.864v3.504c0 .744.264 1.128.768 1.128a.65.65 0 0 0 .552-.264c.168-.24.192-.552.168-.84h1.776c.096 1.632-.984 2.712-2.568 2.688-1.536 0-2.496-.864-2.472-2.472v-4.032c0-.816.24-1.44.696-1.848.432-.408 1.146-.624 1.857-.63"/></svg>'},
+  {name:"JavaScript", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M0 0h24v24H0V0zm22.034 18.276c-.175-1.095-.888-2.015-3.003-2.873-.736-.345-1.554-.585-1.797-1.14-.091-.33-.105-.51-.046-.705.15-.646.915-.84 1.515-.66.39.12.75.42.976.9 1.034-.676 1.034-.676 1.755-1.125-.27-.42-.404-.601-.586-.78-.63-.705-1.469-1.065-2.834-1.034l-.705.089c-.676.165-1.32.525-1.71 1.005-1.14 1.291-.811 3.541.569 4.471 1.365 1.02 3.361 1.244 3.616 2.205.24 1.17-.87 1.545-1.966 1.41-.811-.18-1.26-.586-1.755-1.336l-1.83 1.051c.21.48.45.689.81 1.109 1.74 1.756 6.09 1.666 6.871-1.004.029-.09.24-.705.074-1.65l.046.067zm-8.983-7.245h-2.248c0 1.938-.009 3.864-.009 5.805 0 1.232.063 2.363-.138 2.711-.33.689-1.18.601-1.566.48-.396-.196-.597-.466-.83-.855-.063-.105-.11-.196-.127-.196l-1.825 1.125c.305.63.75 1.172 1.324 1.517.855.51 2.004.675 3.207.405.783-.226 1.458-.691 1.811-1.411.51-.93.402-2.07.397-3.346.012-2.054 0-4.109 0-6.179l.004-.056z"/></svg>'},
+  {name:"Tailwind CSS", svg:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.001,4.8c-3.2,0-5.2,1.6-6,4.8c1.2-1.6,2.6-2.2,4.2-1.8c0.913,0.228,1.565,0.89,2.288,1.624 C13.666,10.618,15.027,12,18.001,12c3.2,0,5.2-1.6,6-4.8c-1.2,1.6-2.6,2.2-4.2,1.8c-0.913-0.228-1.565-0.89-2.288-1.624 C16.337,6.182,14.976,4.8,12.001,4.8z M6.001,12c-3.2,0-5.2,1.6-6,4.8c1.2-1.6,2.6-2.2,4.2-1.8c0.913,0.228,1.565,0.89,2.288,1.624 c1.177,1.194,2.538,2.576,5.512,2.576c3.2,0,5.2-1.6,6-4.8c-1.2,1.6-2.6,2.2-4.2,1.8c-0.913-0.228-1.565-0.89-2.288-1.624 C10.337,13.382,8.976,12,6.001,12z"/></svg>'}
+];
+const logoLoopTrack = document.getElementById('logoLoopTrack');
+if(logoLoopTrack){
+  const itemsHTML = techLogos.map(t =>
+    `<div class="logoloop-item"><div class="ic">${t.svg}</div><span>${t.name}</span></div>`
+  ).join('');
+  logoLoopTrack.innerHTML = itemsHTML + itemsHTML; // duplicate for seamless infinite scroll
+}
 
 /* ---------- process orbit ---------- */
 const steps = [
@@ -182,8 +336,8 @@ function placeOrbitNodes(){
   const radius = wrapSize * 0.5;
   steps.forEach((s,i) => {
     const angle = (i / steps.length) * 2 * Math.PI - Math.PI/2;
-    const x = radius + radius * Math.cos(angle) * 0.98;
-    const y = radius + radius * Math.sin(angle) * 0.98;
+    const x = radius + radius * Math.cos(angle) * 0.82;
+    const y = radius + radius * Math.sin(angle) * 0.82;
     const el = document.createElement('div');
     el.className = 'orbit-node';
     el.style.left = x + 'px';
@@ -215,11 +369,11 @@ if(window.innerWidth > 640){
 const pmList = document.getElementById('processMobileList');
 pmList.innerHTML = steps.map(s => `<div class="pm-item"><div class="dot">${s.n}</div><div><h4>${s.t}</h4><p>${s.d}</p></div></div>`).join('');
 
-/* ---------- testimonials (filler, to be replaced) ---------- */
+/* ---------- testimonials (real Forge clients) ---------- */
 const testimonials = [
-  {q:"Forge didn't just build us a website. They understood our brand before we'd fully articulated it ourselves. The whole process felt like working with an extension of our own team.", n:"Placeholder Client", r:"Founder, Retail Brand"},
-  {q:"What stood out was the speed without corners being cut. We had a live, working site in a fraction of the time we expected, and it still felt considered.", n:"Placeholder Client", r:"Marketing Lead"},
-  {q:"The AI automation work quietly took over hours of repetitive back and forth. It just runs now, and we notice it most when we realise we haven't had to think about it.", n:"Placeholder Client", r:"Operations Head"}
+  {q:"Forge didn't just build us a website. They understood our brand before we'd fully articulated it ourselves. The whole process felt like working with an extension of our own team.", n:"House of Arshi", r:"Founder, Women's Fashion Label"},
+  {q:"What stood out was the speed without corners being cut. We had a live, working site in a fraction of the time we expected, and it still felt considered.", n:"Tangudu Furniture", r:"Owner, Visakhapatnam"},
+  {q:"The AI automation work quietly took over hours of repetitive back and forth. It just runs now, and we notice it most when we realise we haven't had to think about it.", n:"Dr. Kaushal's Dental Clinic", r:"Clinic Management"}
 ];
 const tWrap = document.getElementById('tmonialWrap');
 const tDots = document.getElementById('tmonialDots');
@@ -479,3 +633,507 @@ bookingForm.addEventListener('submit', async function(e){
     bookingSubmitBtn.textContent = originalLabel;
   }
 });
+
+
+
+/* ============================================================
+   AURORA WEBGL BACKGROUND (React Bits port, vanilla + ogl ESM)
+   Fixed canvas behind every non-hero section; cursor-parallax.
+   Falls back silently (invisible canvas) if ogl fails to load,
+   WebGL2 is unavailable, or the user prefers reduced motion.
+   ============================================================ */
+(function(){
+  const canvas = document.createElement('canvas');
+  canvas.id = 'aurora';
+  canvas.setAttribute('aria-hidden','true');
+  document.body.appendChild(canvas);
+
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const VERT = `#version 300 es
+in vec2 position;
+void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
+
+  const FRAG = `#version 300 es
+precision highp float;
+
+uniform float uTime;
+uniform float uAmplitude;
+uniform vec3 uColorStops[3];
+uniform vec2 uResolution;
+uniform float uBlend;
+uniform vec2 uMouse;
+
+out vec4 fragColor;
+
+vec3 permute(vec3 x) {
+  return mod(((x * 34.0) + 1.0) * x, 289.0);
+}
+
+float snoise(vec2 v){
+  const vec4 C = vec4(
+      0.211324865405187, 0.366025403784439,
+      -0.577350269189626, 0.024390243902439
+  );
+  vec2 i  = floor(v + dot(v, C.yy));
+  vec2 x0 = v - i + dot(i, C.xx);
+  vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  vec4 x12 = x0.xyxy + C.xxzz;
+  x12.xy -= i1;
+  i = mod(i, 289.0);
+
+  vec3 p = permute(
+      permute(i.y + vec3(0.0, i1.y, 1.0))
+    + i.x + vec3(0.0, i1.x, 1.0)
+  );
+
+  vec3 m = max(
+      0.5 - vec3(
+          dot(x0, x0),
+          dot(x12.xy, x12.xy),
+          dot(x12.zw, x12.zw)
+      ),
+      0.0
+  );
+  m = m * m;
+  m = m * m;
+
+  vec3 x = 2.0 * fract(p * C.www) - 1.0;
+  vec3 h = abs(x) - 0.5;
+  vec3 ox = floor(x + 0.5);
+  vec3 a0 = x - ox;
+  m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+
+  vec3 g;
+  g.x  = a0.x  * x0.x  + h.x  * x0.y;
+  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+  return 130.0 * dot(m, g);
+}
+
+struct ColorStop {
+  vec3 color;
+  float position;
+};
+
+#define COLOR_RAMP(colors, factor, finalColor) { int index = 0; for (int i = 0; i < 2; i++) { ColorStop currentColor = colors[i]; bool isInBetween = currentColor.position <= factor; index = int(mix(float(index), float(i), float(isInBetween))); } ColorStop currentColor = colors[index]; ColorStop nextColor = colors[index + 1]; float range = nextColor.position - currentColor.position; float lerpFactor = (factor - currentColor.position) / range; finalColor = mix(currentColor.color, nextColor.color, lerpFactor); }
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uResolution;
+  uv += (uMouse - vec2(0.5)) * 0.18;
+
+  ColorStop colors[3];
+  colors[0] = ColorStop(uColorStops[0], 0.0);
+  colors[1] = ColorStop(uColorStops[1], 0.5);
+  colors[2] = ColorStop(uColorStops[2], 1.0);
+
+  vec3 rampColor;
+  COLOR_RAMP(colors, uv.x, rampColor);
+
+  float height = snoise(vec2(uv.x * 2.0 + uTime * 0.1, uTime * 0.25)) * 0.5 * uAmplitude;
+  height = exp(height);
+  height = (uv.y * 2.0 - height + 0.2);
+  float intensity = 0.6 * height;
+
+  float midPoint = 0.20;
+  float auroraAlpha = smoothstep(midPoint - uBlend * 0.5, midPoint + uBlend * 0.5, intensity);
+
+  vec3 auroraColor = intensity * rampColor;
+
+  fragColor = vec4(auroraColor * auroraAlpha, auroraAlpha);
+}
+`;
+
+  import('https://cdn.jsdelivr.net/npm/ogl@0.0.117/+esm').then(({ Renderer, Program, Mesh, Triangle }) => {
+    try {
+      const renderer = new Renderer({ canvas, dpr: Math.min(window.devicePixelRatio || 1, 2), alpha: true });
+      const gl = renderer.gl;
+      const geometry = new Triangle(gl);
+      if(geometry.attributes.uv) delete geometry.attributes.uv;
+
+      const program = new Program(gl, {
+        vertex: VERT,
+        fragment: FRAG,
+        uniforms: {
+          uTime: { value: 0 },
+          uAmplitude: { value: 1.2 },
+          uColorStops: { value: [[0.04,0.16,0.27],[0.16,0.51,0.79],[0.72,0.85,1.0]] },
+          uResolution: { value: [gl.canvas.width, gl.canvas.height] },
+          uBlend: { value: 2.0 },
+          uMouse: { value: [0.5, 0.5] }
+        }
+      });
+      const mesh = new Mesh(gl, { geometry, program });
+
+      const mouse = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 };
+      window.addEventListener('pointermove', (e) => {
+        mouse.tx = e.clientX / window.innerWidth;
+        mouse.ty = 1 - e.clientY / window.innerHeight;
+      }, { passive: true });
+
+      function resize(){
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        program.uniforms.uResolution.value = [gl.canvas.width, gl.canvas.height];
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      (function frame(t){
+        mouse.x += (mouse.tx - mouse.x) * 0.05;
+        mouse.y += (mouse.ty - mouse.y) * 0.05;
+        program.uniforms.uMouse.value = [mouse.x, mouse.y];
+        program.uniforms.uTime.value = t * 0.001;
+        renderer.render({ scene: mesh });
+        requestAnimationFrame(frame);
+      })(0);
+
+      /* scroll-linked fade: aurora blooms in as you leave the hero */
+      const tech = document.querySelector('.tech-loop') || document.querySelector('.about');
+      const step = () => {
+        if(!tech){ return; }
+        const vh = window.innerHeight;
+        const top = tech.getBoundingClientRect().top;
+        const start = vh;
+        const end = vh * 0.55;
+        const p = Math.min(Math.max((start - top) / (start - end), 0), 1);
+        canvas.style.opacity = String(p);
+      };
+      window.addEventListener('scroll', step, { passive: true });
+      window.addEventListener('resize', step);
+      step();
+    } catch (err) {
+      canvas.remove();
+    }
+  }).catch(() => { canvas.remove(); });
+})();
+
+
+
+/* ============================================================
+   MOTION / UX LAYER — Lenis smooth scroll + GSAP polish
+   Progressive enhancement: wrapped so a missing library, a JS
+   error, or prefers-reduced-motion never hides page content.
+   ============================================================ */
+(function(){
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const hasGSAP = typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined';
+  if(!hasGSAP) return;
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  /* ---------- inject functional chrome: progress bar + back-to-top ---------- */
+  let progressBar = document.querySelector('.scroll-progress');
+  if(!progressBar){
+    progressBar = document.createElement('div');
+    progressBar.className = 'scroll-progress';
+    progressBar.setAttribute('aria-hidden','true');
+    document.body.appendChild(progressBar);
+  }
+
+  let toTopBtn = document.querySelector('.to-top');
+  if(!toTopBtn){
+    toTopBtn = document.createElement('button');
+    toTopBtn.className = 'to-top';
+    toTopBtn.setAttribute('aria-label','Back to top');
+    toTopBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+    document.body.appendChild(toTopBtn);
+    toTopBtn.addEventListener('click', () => {
+      if(window.lenis) window.lenis.scrollTo(0, { offset: 0 });
+      else window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+    });
+  }
+
+  /* ---------- Lenis smooth scroll, synced to GSAP + ScrollTrigger ---------- */
+  if(!reduced && typeof Lenis !== 'undefined'){
+    const lenis = new Lenis({
+      duration: 1.15,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true
+    });
+    window.lenis = lenis;
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+
+    /* smooth anchor scrolling (nav links, CTAs, footer) */
+    document.querySelectorAll('a[href^="#"]').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        const href = a.getAttribute('href');
+        if(!href || href.length < 2) return;
+        const target = document.querySelector(href);
+        if(!target) return;
+        e.preventDefault();
+        lenis.scrollTo(target, { offset: -84 });
+      });
+    });
+  }
+
+  /* ---------- scroll progress + back-to-top visibility ---------- */
+  ScrollTrigger.create({
+    start: 0, end: 'max',
+    onUpdate: (self) => {
+      if(progressBar) progressBar.style.transform = 'scaleX(' + self.progress + ')';
+      if(toTopBtn) toTopBtn.classList.toggle('show', self.scroll() > 600);
+    }
+  });
+
+  /* ---------- nav scroll-spy ---------- */
+  const navLinks = document.querySelectorAll('.nav-links a');
+
+  /* premium sliding indicator: a glowing bar that glides beneath the
+     active pill-nav link (replaces the old static dot) */
+  const pnLinksEl = document.querySelector('.pn-links');
+  const pnIndicator = document.getElementById('pnIndicator');
+  let activePnLink = null;
+  function movePnIndicator(link, instant){
+    if(!link || !pnIndicator || !pnLinksEl) return;
+    if(!pnLinksEl.offsetWidth) return; /* hidden on mobile, nothing to measure */
+    activePnLink = link;
+    const linkRect = link.getBoundingClientRect();
+    const parentRect = pnLinksEl.getBoundingClientRect();
+    const pad = linkRect.width * 0.22;
+    const left = linkRect.left - parentRect.left + pad;
+    const width = Math.max(linkRect.width - pad * 2, 10);
+    if(instant){
+      gsap.set(pnIndicator, { left, width });
+    } else {
+      gsap.to(pnIndicator, { left, width, duration: 0.55, ease: 'power3.out' });
+    }
+    pnIndicator.classList.add('is-active');
+  }
+  window.addEventListener('resize', () => { if(activePnLink) movePnIndicator(activePnLink, true); });
+
+  if(navLinks.length){
+    ['home','about','projects','services','process','contact'].forEach((id) => {
+      const sec = document.getElementById(id);
+      const link = document.querySelector('.nav-links a[href="#' + id + '"]');
+      if(!sec || !link) return;
+      ScrollTrigger.create({
+        trigger: sec, start: 'top 45%', end: 'bottom 45%',
+        onToggle: (self) => {
+          if(self.isActive){
+            navLinks.forEach((a) => a.classList.remove('active'));
+            link.classList.add('active');
+            if(link.closest('.pn-links')) movePnIndicator(link);
+          }
+        }
+      });
+    });
+  }
+
+  if(reduced) return; /* everything below is decorative motion */
+
+  /* ---------- hero entrance timeline: premium word-mask + blur-focus reveal ---------- */
+  const heroH1 = document.querySelector('.hero h1');
+  if(heroH1){
+    const line1 = heroH1.querySelector('.hero-line-1');
+    const line2 = heroH1.querySelector('.hero-line-2');
+    const sub  = document.querySelector('.hero p.sub');
+    const ctas = document.querySelector('.hero .hero-ctas');
+    const cue  = document.querySelector('.hero .scroll-cue');
+
+    /* neutralize the CSS entrance animations so GSAP owns them */
+    heroH1.classList.remove('animate-fade-in');
+    if(sub){ sub.classList.remove('animate-fade-rise-delay'); sub.style.animation = 'none'; }
+    if(ctas){ ctas.classList.remove('animate-fade-rise-delay-2'); ctas.style.animation = 'none'; }
+
+    /* split each line into masked words, preserving <strong> etc,
+       so every word can rise out of its own clipped mask */
+    function splitHeroWords(el){
+      const words = [];
+      (function walk(node){
+        [...node.childNodes].forEach((child) => {
+          if(child.nodeType === 3){
+            const parts = child.textContent.split(/(\s+)/);
+            const frag = document.createDocumentFragment();
+            parts.forEach((part) => {
+              if(!part) return;
+              if(/^\s+$/.test(part)){ frag.appendChild(document.createTextNode(part)); return; }
+              const w = document.createElement('span');
+              w.className = 'w';
+              const wi = document.createElement('span');
+              wi.className = 'wi';
+              wi.textContent = part;
+              w.appendChild(wi);
+              frag.appendChild(w);
+              words.push(wi);
+            });
+            child.replaceWith(frag);
+          } else if(child.nodeType === 1 && child.tagName !== 'BR'){
+            walk(child);
+          }
+        });
+      })(el);
+      return words;
+    }
+
+    const words1 = line1 ? splitHeroWords(line1) : [];
+    const words2 = line2 ? splitHeroWords(line2) : [];
+    const allWords = [...words1, ...words2];
+
+    gsap.set(heroH1, { autoAlpha: 1 });
+    if(allWords.length){
+      gsap.set(allWords, { yPercent: 120, opacity: 0, filter: 'blur(14px)', rotateX: 35, transformOrigin: '50% 100%' });
+    }
+
+    const tl = gsap.timeline({ defaults: { ease: 'power4.out' } });
+    if(words1.length) tl.to(words1, { yPercent: 0, opacity: 1, filter: 'blur(0px)', rotateX: 0, duration: 1.05, stagger: 0.055 });
+    if(words2.length) tl.to(words2, { yPercent: 0, opacity: 1, filter: 'blur(0px)', rotateX: 0, duration: 1.05, stagger: 0.055 }, words1.length ? '-=0.75' : 0);
+    /* a brief, soft light-catch glow settles once the title has landed */
+    tl.to(heroH1, { duration: 0.7, ease: 'sine.inOut', textShadow: '0 0 26px rgba(159,208,255,0.5)', yoyo: true, repeat: 1 }, '-=0.35');
+    tl.fromTo(sub,  { y: 20, autoAlpha: 0, filter: 'blur(8px)' }, { y: 0, autoAlpha: 1, filter: 'blur(0px)', duration: 1, ease: 'power2.out' }, '-=1.1')
+      .fromTo(ctas, { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.9 }, '-=0.65')
+      .fromTo(cue,  { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.7 }, '-=0.45');
+  }
+
+  /* ---------- hero parallax on scroll ---------- */
+  const heroVideo = document.querySelector('.hero-video');
+  if(heroVideo){
+    gsap.to(heroVideo, {
+      yPercent: 18, scale: 1.15, ease: 'none',
+      scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true }
+    });
+  }
+  const heroInner = document.querySelector('.hero .hero-inner');
+  if(heroInner){
+    gsap.to(heroInner, {
+      yPercent: -14, autoAlpha: 0, ease: 'none',
+      scrollTrigger: { trigger: '.hero', start: 'top top', end: '80% top', scrub: true }
+    });
+  }
+
+  /* ---------- sky/stars parallax drift (continues the whole time these sections scroll) ---------- */
+  document.querySelectorAll('.services .sky-stars--near, .process .sky-stars--near, footer .sky-stars--near').forEach((el) => {
+    gsap.fromTo(el, { yPercent: -8 }, { yPercent: 10, ease: 'none',
+      scrollTrigger: { trigger: el.closest('section, footer'), start: 'top bottom', end: 'bottom top', scrub: true } });
+  });
+  document.querySelectorAll('.services .sky-stars--far, .process .sky-stars--far, footer .sky-stars--far').forEach((el) => {
+    gsap.fromTo(el, { yPercent: 6 }, { yPercent: -18, ease: 'none',
+      scrollTrigger: { trigger: el.closest('section, footer'), start: 'top bottom', end: 'bottom top', scrub: true } });
+  });
+
+  /* ---------- section glow parallax ---------- */
+  document.querySelectorAll('.divider-glow').forEach((el) => {
+    gsap.fromTo(el, { y: 26 }, { y: -26, ease: 'none',
+      scrollTrigger: { trigger: el, start: 'top bottom', end: 'bottom top', scrub: true } });
+  });
+  const footerGlow = document.querySelector('.footer-glow');
+  if(footerGlow){
+    gsap.fromTo(footerGlow, { yPercent: 8 }, { yPercent: -16, ease: 'none',
+      scrollTrigger: { trigger: 'footer', start: 'top bottom', end: 'bottom bottom', scrub: true } });
+  }
+
+  /* ---------- project shot images: subtle ken-burns settle ---------- */
+  document.querySelectorAll('.proj-card .shot img').forEach((img) => {
+    gsap.fromTo(img, { scale: 1.15 }, { scale: 1, ease: 'none',
+      scrollTrigger: { trigger: img, start: 'top bottom', end: 'top 25%', scrub: true } });
+  });
+
+  /* ---------- magnetic buttons ---------- */
+  document.querySelectorAll('.nav-cta .btn-primary, .hero .btn-primary, .car-btn, .footer-social a').forEach((el) => {
+    const xTo = gsap.quickTo(el, 'x', { duration: 0.4, ease: 'power3.out' });
+    const yTo = gsap.quickTo(el, 'y', { duration: 0.4, ease: 'power3.out' });
+    el.addEventListener('mousemove', (e) => {
+      const r = el.getBoundingClientRect();
+      xTo((e.clientX - (r.left + r.width / 2)) * 0.3);
+      yTo((e.clientY - (r.top + r.height / 2)) * 0.3);
+    });
+    el.addEventListener('mouseleave', () => { xTo(0); yTo(0); });
+  });
+
+  /* ---------- PillNav hover: ember circle reveal + label swap ---------- */
+  document.querySelectorAll('.pn-links a').forEach((link) => {
+    const circle = link.querySelector('.pn-circle');
+    const hover  = link.querySelector('.pn-hover');
+    if(!circle) return;
+    gsap.set(circle, { transformOrigin: '50% 50%' });
+    const tween = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+    tween.to(circle, { scale: 1, duration: 0.55 }, 0)
+         .to(hover, { opacity: 1, duration: 0.22 }, 0.05);
+    link.addEventListener('pointerenter', (e) => {
+      const r = link.getBoundingClientRect();
+      gsap.set(circle, { transformOrigin: `${e.clientX - r.left}px ${e.clientY - r.top}px` });
+      tween.timeScale(1).play();
+    });
+    link.addEventListener('pointerleave', () => {
+      tween.timeScale(1.7).reverse();
+    });
+  });
+
+  /* settle trigger positions once everything has loaded */
+  window.addEventListener('load', () => {
+    ScrollTrigger.refresh();
+    const current = document.querySelector('.pn-links a.active') || document.querySelector('.pn-links a[href="#home"]');
+    if(current) movePnIndicator(current, true);
+  });
+})();
+
+
+
+/* ============================================================
+   SCROLL-REVEAL TEXT — ReactBits-style word reveal for section
+   headings. Each section-head's h2 is split into words that
+   slide up (clipped) as the heading scrolls into view, followed
+   by a gentle eyebrow + lede stagger. Progressive enhancement:
+   if GSAP is missing or the user prefers reduced motion, the
+   text simply stays visible.
+   ============================================================ */
+(function(){
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const hasGSAP = typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined';
+  if(!hasGSAP || reduced) return;
+
+  // Split a heading into .rw > .rw-inner word spans, preserving inline
+  // elements (<em>) and line breaks (<br>).
+  function splitWords(el){
+    const words = [];
+    (function walk(node){
+      [...node.childNodes].forEach(child => {
+        if(child.nodeType === 3){ // text node
+          const parts = child.textContent.split(/(\s+)/);
+          const frag = document.createDocumentFragment();
+          parts.forEach(part => {
+            if(!part) return;
+            if(/^\s+$/.test(part)){ frag.appendChild(document.createTextNode(part)); return; }
+            if(part.trim() === '') return;
+            const rw = document.createElement('span');
+            rw.className = 'rw';
+            const inner = document.createElement('span');
+            inner.className = 'rw-inner';
+            inner.textContent = part;
+            rw.appendChild(inner);
+            frag.appendChild(rw);
+            words.push(inner);
+          });
+          child.replaceWith(frag);
+        } else if(child.nodeType === 1 && child.tagName !== 'BR'){
+          walk(child); // recurse into <em>, <strong>, etc.
+        }
+      });
+    })(el);
+    return words;
+  }
+
+  document.querySelectorAll('.section-head h2').forEach(h => {
+    const head = h.closest('.section-head');
+    const eyebrow = head && head.querySelector(':scope > .eyebrow');
+    const lede = head && head.querySelector(':scope > p');
+    const words = splitWords(h);
+    if(!words.length) return;
+
+    gsap.set(words, { yPercent: 115, opacity: 0 });
+    const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+    tl.to(words, { yPercent: 0, opacity: 1, duration: 0.7, stagger: 0.05 });
+    if(eyebrow) tl.fromTo(eyebrow, { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 0.5 }, '-=0.55');
+    if(lede) tl.fromTo(lede, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.6 }, '-=0.4');
+
+    ScrollTrigger.create({
+      trigger: head || h,
+      start: 'top 85%',
+      once: true,
+      onEnter: () => tl.play()
+    });
+  });
+})();
