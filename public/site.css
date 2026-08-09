@@ -649,6 +649,11 @@ footer{background:var(--bg);border-top:1px solid var(--line);padding-top:110px;p
   width:100%;height:100%;object-fit:cover;
 }
 .hero-video ~ .hero-inner{position:relative;z-index:2;}
+/* hide the native play/pause overlay some mobile WebKit builds draw over
+   the autoplaying background video (keeps the video itself untouched) */
+.hero-video::-webkit-media-controls,
+.hero-video::-webkit-media-controls-enclosure,
+.hero-video::-webkit-media-controls-start-playback-button{display:none!important;}
 
 /* faint legibility scrim over the video (not a decorative blob) */
 .hero::after{
@@ -673,7 +678,7 @@ footer{background:var(--bg);border-top:1px solid var(--line);padding-top:110px;p
   font-family:'Instrument Serif',serif;
   font-weight:400;font-size:clamp(34px,6.5vw,78px);
   line-height:1.15;letter-spacing:-0.02em;
-  max-width:15ch;white-space:normal;
+  max-width:none;white-space:normal;
   margin:0 auto;color:var(--cin-ink);
 }
 .hero h1 strong{
@@ -684,7 +689,7 @@ footer{background:var(--bg);border-top:1px solid var(--line);padding-top:110px;p
   display:block;text-align:center;white-space:nowrap;
 }
 .hero h1 .hero-line-2{margin-top:0.14em;}
-@media(max-width:520px){
+@media(max-width:768px){
   .hero h1 .hero-line-1,
   .hero h1 .hero-line-2{white-space:normal;}
 }
@@ -693,7 +698,7 @@ footer{background:var(--bg);border-top:1px solid var(--line);padding-top:110px;p
 .hero h1{
   color:var(--text);
 }
-@media(max-width:520px){
+@media(max-width:768px){
   .hero h1{white-space:normal;font-size:clamp(32px,9vw,42px);}
 }
 .hero p.sub{

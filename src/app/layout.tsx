@@ -2,9 +2,30 @@ import type { Metadata } from "next";
 import Script from "next/script";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://forgeaistudios.com"),
   title: "Forge AI Studios: Forging Intelligent Digital Experiences",
   description:
     "Forge AI Studios designs and builds websites, ecommerce, AI automation and performance marketing systems built to last.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "/",
+    siteName: "Forge AI Studios",
+    title: "Forge AI Studios: Forging Intelligent Digital Experiences",
+    description:
+      "Forge AI Studios designs and builds websites, ecommerce, AI automation and performance marketing systems built to last.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Forge AI Studios: Forging Intelligent Digital Experiences",
+    description:
+      "Forge AI Studios designs and builds websites, ecommerce, AI automation and performance marketing systems built to last.",
+  },
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
