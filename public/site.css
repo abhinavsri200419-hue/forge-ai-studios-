@@ -1023,3 +1023,49 @@ footer .sky-glow{top:auto;bottom:0;}
 
   .rw{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.12em;margin-bottom:-.12em;}
   .rw-inner{display:inline-block;will-change:transform;}
+
+
+/* ============================================================
+   MOBILE OPTIMIZATION (phones / small tablets)
+   Everything here is either invisible on desktop or scoped to
+   a max-width media query, so the desktop design is unchanged.
+   ============================================================ */
+
+/* The footer glow is 800px wide and centred, so on a phone it hung ~200px
+   past each screen edge. body{overflow-x:hidden} hid it visually, but mobile
+   browsers still count it as page width: Chrome/Android zoomed the whole page
+   out (hero no longer filling the screen) and iOS Safari let the page pan
+   sideways. Clipping it at its own section looks identical but stops it
+   widening the page. */
+footer{overflow-x:hidden;overflow-x:clip;}
+
+/* 100vh on iOS Safari / Android Chrome is the *tallest* viewport (browser bars
+   hidden), which pushes the bottom of the hero under the toolbar on first
+   load. svh = the viewport with bars showing. Desktop: svh equals vh. */
+@supports (height:100svh){
+  .hero{min-height:100svh;}
+}
+
+/* ---------- mobile pill navbar ---------- */
+@media(max-width:768px){
+  /* the nav used width:min(960px,94vw) inside a padded .wrap, which made it
+     wider than its container on phones and left it off-centre. Fill the
+     container instead, with an even gutter on both sides. */
+  #siteHeader.pill-nav{top:12px;}
+  #siteHeader.pill-nav .wrap{padding:0 14px;}
+  #siteHeader.pill-nav nav{width:100%;max-width:none;padding:7px 8px;}
+
+  /* the markup has only the logo + hamburger on mobile (links/CTA are in the
+     menu), which left a big empty pill. Bring the wordmark back beside the
+     logo; the hamburger stays on the right. */
+  #siteHeader.pill-nav .pn-brand{margin-right:0;gap:10px;min-width:0;}
+  #siteHeader.pill-nav .pn-brand::after{
+    content:"Forge AI Studios";
+    content:"Forge AI Studios" / "";
+    font-family:'Instrument Serif',serif;font-size:21px;line-height:1;letter-spacing:0.01em;
+    color:var(--cin-ink);white-space:nowrap;
+  }
+
+  /* 34px was under the 44px comfortable touch-target size */
+  .hamburger{width:42px;height:42px;}
+}

@@ -1,5 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+
+// Explicit mobile viewport + browser-chrome tint (matches --bg in site.css), so
+// the Android address bar / iOS status area blend into the page instead of
+// showing black bars above the navy hero.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#041b2e",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://forgeaistudios.com"),
